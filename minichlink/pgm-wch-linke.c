@@ -120,6 +120,8 @@ static inline libusb_device_handle * wch_link_base_setup( int inhibit_startup )
 	ssize_t i = 0;
 
 	libusb_device *found = NULL;
+	libusb_device *wch_devices[16]; // Support up to 16 WCH-Link devices
+	int wch_device_count = 0;
 	libusb_device * found_arm_programmer = NULL;
 	libusb_device * found_programmer_in_iap = NULL;
 
@@ -127,9 +129,30 @@ static inline libusb_device_handle * wch_link_base_setup( int inhibit_startup )
 		libusb_device *device = list[i];
 		struct libusb_device_descriptor desc;
 		int r = libusb_get_device_descriptor(device,&desc);
-		if( r == 0 && desc.idVendor == 0x1a86 && desc.idProduct == 0x8010 ) { found = device; }
+		if( r == 0 && desc.idVendor == 0x1a86 && desc.idProduct == 0x8010 ) {
+			wch_devices[wch_device_count++] = device;
+		}
 		if( r == 0 && desc.idVendor == 0x1a86 && desc.idProduct == 0x8012) { found_arm_programmer = device; }
 		if( r == 0 && desc.idVendor == 0x4348 && desc.idProduct == 0x55e0) { found_programmer_in_iap = device; }
+	}
+
+	// Select the specified device by index
+	extern int g_wch_link_device_index;
+	if (wch_device_count > 0) {
+		if (g_wch_link_device_index >= wch_device_count) {
+			fprintf(stderr, "Error: WCH-Link device index %d not found (found %d device%s)\n",
+					g_wch_link_device_index, wch_device_count, wch_device_count > 1 ? "s" : "");
+			if (wch_device_count > 1) {
+				fprintf(stderr, "Available device indices: 0 to %d. Use -I <index> to select.\n",
+						wch_device_count - 1);
+			}
+			return 0;
+		}
+		found = wch_devices[g_wch_link_device_index];
+		if (wch_device_count > 1) {
+			fprintf(stderr, "Info: Using WCH-Link device %d of %d\n",
+					g_wch_link_device_index, wch_device_count);
+		}
 	}
 
 	if( !found )

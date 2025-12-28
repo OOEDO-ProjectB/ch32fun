@@ -114,6 +114,9 @@ void * MiniCHLinkInitAsDLL( struct MiniChlinkFunctions ** MCFO, const init_hints
 	return dev;
 }
 
+// Global variable for WCH-Link device index selection
+int g_wch_link_device_index = 0;
+
 #if !defined( MINICHLINK_AS_LIBRARY ) && !defined( MINICHLINK_IMPORT )
 int main( int argc, char ** argv )
 {
@@ -147,6 +150,19 @@ int main( int argc, char ** argv )
 			i++;
 			if( i < argc )
 				hints.specific_programmer = argv[i];
+		}
+		else if( strncmp( v, "-I", 2 ) == 0 )
+		{
+			i++;
+			if( i < argc )
+			{
+				g_wch_link_device_index = atoi( argv[i] );
+				if( g_wch_link_device_index < 0 || g_wch_link_device_index > 15 )
+				{
+					fprintf( stderr, "Error: Device index must be 0-15 (got %d)\n", g_wch_link_device_index );
+					return -1;
+				}
+			}
 		}
 	}
 
@@ -730,9 +746,14 @@ keep_going:
 			case 'i':
 			{
 				if( MCF.PrintChipInfo )
-					MCF.PrintChipInfo( dev ); 
+					MCF.PrintChipInfo( dev );
 				else
 					goto unimplemented;
+				break;
+			}
+			case 'I':  // Select WCH-Link device by index (already processed in pre-scan)
+			{
+				iarg++;  // Skip the device index argument
 				break;
 			}
 			case 'X':
@@ -1043,6 +1064,7 @@ help:
 	fprintf( stderr, " -D Configure NRST as GPIO\n" );
 	fprintf( stderr, " -d Configure NRST as NRST\n" );
 	fprintf( stderr, " -i Show chip info\n" );
+	fprintf( stderr, " -I [device index] Select WCH-Link device (0-15, default: 0)\n" );
 	fprintf( stderr, " -s [debug register] [value]\n" );
 	fprintf( stderr, " -m [debug register]\n" );
 	fprintf( stderr, " -T Terminal Only (must be last arg)\n" );
