@@ -621,6 +621,16 @@ static int LEConfigureNRSTAsGPIO( void * d, int one_if_yes_gpio )
 	return 0;
 }
 
+// 読み出し保護の状態。有効なら 1、無効なら 0、読めなければ -1
+static int LEReadProtectionStatus( libusb_device_handle * dev )
+{
+	uint8_t rbuff[1024];
+	int transferred = 0;
+	wch_link_command( dev, "\x81\x06\x01\x01", 4, &transferred, rbuff, sizeof( rbuff ) );
+	if( transferred != 4 ) return -1;
+	return rbuff[3] == 0x01;
+}
+
 static int LEConfigureReadProtection( void * d, int one_if_yes_protect )
 {
 	libusb_device_handle * dev = ((struct LinkEProgrammerStruct*)d)->devh;
@@ -649,6 +659,16 @@ static int LEConfigureReadProtection( void * d, int one_if_yes_protect )
 		if( iss->target_chip_type == CHIP_CH570 ) wch_link_multicommands( (libusb_device_handle *)dev, 2, 11, "\x81\x06\x07\x02\xff\xff\xff\xff\xff\xff\xff", 4, "\x81\x0b\x01\x01" );
 		else wch_link_multicommands( (libusb_device_handle *)dev, 2, 11, "\x81\x06\x08\x02\xf7\xff\xff\xff\xff\xff\xff", 4, "\x81\x0b\x01\x01" );
 	}
+
+	// WCH-LinkE は option bytes を書けたかを返さないので、LESetupInterface と同じ問い合わせで状態を読み返す
+	int status = LEReadProtectionStatus( dev );
+	if( status != one_if_yes_protect )
+	{
+		fprintf( stderr, "Error: read protection is %s after trying to %s it\n",
+			status < 0 ? "unknown" : status ? "enabled" : "disabled", one_if_yes_protect ? "enable" : "disable" );
+		return -1;
+	}
+	fprintf( stderr, "Read protection: %s\n", status ? "enabled" : "disabled" );
 	return 0;
 }
 

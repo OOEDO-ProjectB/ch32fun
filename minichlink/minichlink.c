@@ -389,7 +389,14 @@ keep_going:
 			case 'P':
 				if( MCF.HaltMode ) MCF.HaltMode( dev, HALT_MODE_HALT_AND_RESET );
 				if( MCF.ConfigureReadProtection )
-					MCF.ConfigureReadProtection( dev, 1 );
+				{
+					// 量産の道具が止まれるよう、失敗を終了コードで返す
+					if( MCF.ConfigureReadProtection( dev, 1 ) )
+					{
+						fprintf( stderr, "Error: Could not enable read protection.\n" );
+						return -1;
+					}
+				}
 				else
 					goto unimplemented;
 				break;
