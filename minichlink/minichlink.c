@@ -377,10 +377,19 @@ keep_going:
 				if( MCF.ConfigureReadProtection )
 				{
 					fprintf(stderr, "This will erase the flash entirely!\n");
-					fprintf(stderr, "Press Enter to proceed, Ctrl+C to abort.");
-					while(!IsKBHit());
+					// 量産の道具（標準入力が端末でない）からは Enter を待たずに外す
+					if( isatty( 0 ) )
+					{
+						fprintf(stderr, "Press Enter to proceed, Ctrl+C to abort.");
+						while(!IsKBHit());
+					}
 					// TODO: revert after testing
-					MCF.ConfigureReadProtection( dev, 0 );
+					// 量産の道具が止まれるよう、失敗を終了コードで返す
+					if( MCF.ConfigureReadProtection( dev, 0 ) )
+					{
+						fprintf( stderr, "Error: Could not disable read protection.\n" );
+						return -1;
+					}
 				}
 				else
 					goto unimplemented;
