@@ -460,6 +460,16 @@ static int LESetupInterface( void * d )
 		wch_link_command( dev, "\x81\x0d\x01\x02", 4, (int*)&transferred, rbuff, 1024 ); // Reply: Ignored, 820d050900300500
 		if (transferred == 4 || (rbuff[0] == 0x81 && rbuff[1] == 0x55 && rbuff[2] == 0x01) ) // && rbuff[3] == 0x01 )
 		{
+			// 量産の道具は基板の無い間も検出を繰り返す。WCH-LinkE（ファーム 2.18 で確認）は、先が無いときに
+			// 下の再試行（リセット線を下げる命令など）を受けると、基板をつなぎ直しても「何もつながっていない」と
+			// 答え続け、USB を差し直すまで戻らない。MINICHLINK_NO_ATTACH_RETRY があれば再試行せずに切り離して失敗で返す
+			if( getenv( "MINICHLINK_NO_ATTACH_RETRY" ) )
+			{
+				wch_link_command( dev, "\x81\x0d\x01\xff", 4, 0, 0, 0 );
+				fprintf( stderr, "Error: nothing connected to linker (no retry).\n" );
+				return -1;
+			}
+
 			// The following code may try to execute a few times to get the processor to actually reset.
 			// This code could likely be much better.
 			if( already_tried_reset > 1)
