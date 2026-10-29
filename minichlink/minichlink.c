@@ -118,7 +118,7 @@ void * MiniCHLinkInitAsDLL( struct MiniChlinkFunctions ** MCFO, const init_hints
 int g_wch_link_device_index = 0;
 
 #if !defined( MINICHLINK_AS_LIBRARY ) && !defined( MINICHLINK_IMPORT )
-int main( int argc, char ** argv )
+static int minichlink_main( int argc, char ** argv )
 {
 	int i;
 
@@ -1101,6 +1101,24 @@ help:
 unimplemented:
 	fprintf( stderr, "Error: Command '%s' unimplemented on this programmer.\n", lastcommand );
 	return -1;
+}
+
+// 失敗で終わったとき（途中の exit() を含む）だけ、WCH-LinkE との命令と返事を出す。
+// 成功と比べたいときは環境変数 MINICHLINK_TRACE を設定すると、成功時にも出す
+static int minichlink_exit_ok;
+
+static void DumpLinkETraceOnFailure( void )
+{
+	if( !minichlink_exit_ok || getenv( "MINICHLINK_TRACE" ) )
+		LinkETraceDump();
+}
+
+int main( int argc, char ** argv )
+{
+	atexit( DumpLinkETraceOnFailure );
+	int ret = minichlink_main( argc, argv );
+	minichlink_exit_ok = ( ret == 0 );
+	return ret;
 }
 #endif
 

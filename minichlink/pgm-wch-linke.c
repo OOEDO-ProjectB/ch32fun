@@ -57,6 +57,44 @@ static int LEWriteBinaryBlob( void * d, uint32_t address_to_write, uint32_t len,
 #define WCHTIMEOUT 5000
 #define WCHCHECK(x) if( (status = x) ) { fprintf( stderr, "Bad USB Operation on " __FILE__ ":%d (%d)\n", __LINE__, status ); exit( status ); }
 
+// 量産の道具で「なぜつながらなかったか」を後から追えるよう、WCH-LinkE との命令と返事を
+// 直近 LINKE_TRACE_MAX 件だけ覚えておく。出すのは失敗で終わったときだけ（minichlink.c の main）
+#define LINKE_TRACE_MAX 128
+#define LINKE_TRACE_BYTES 16
+static char linke_trace[LINKE_TRACE_MAX][128];
+static int linke_trace_count;
+
+static void LinkETraceAdd( const char * fmt, ... )
+{
+	va_list ap;
+	va_start( ap, fmt );
+	vsnprintf( linke_trace[linke_trace_count % LINKE_TRACE_MAX], sizeof( linke_trace[0] ), fmt, ap );
+	va_end( ap );
+	linke_trace_count++;
+}
+
+static const char * LinkETraceHex( char * out, const uint8_t * data, int len )
+{
+	int shown = len < LINKE_TRACE_BYTES ? len : LINKE_TRACE_BYTES;
+	int i;
+	out[0] = 0;
+	for( i = 0; i < shown; i++ )
+		sprintf( out + i * 3, "%02x ", data[i] );
+	if( len > shown )
+		sprintf( out + shown * 3, "...(%d) ", len );
+	return out;
+}
+
+void LinkETraceDump( void )
+{
+	int first = linke_trace_count > LINKE_TRACE_MAX ? linke_trace_count - LINKE_TRACE_MAX : 0;
+	int i;
+	if( first > 0 )
+		fprintf( stderr, "[trace] (%d entries omitted)\n", first );
+	for( i = first; i < linke_trace_count; i++ )
+		fprintf( stderr, "[trace] %s\n", linke_trace[i % LINKE_TRACE_MAX] );
+}
+
 void wch_link_command( libusb_device_handle * devh, const void * command_v, int commandlen, int * transferred, uint8_t * reply, int replymax )
 {
 	uint8_t * command = (uint8_t*)command_v;
@@ -80,15 +118,24 @@ void wch_link_command( libusb_device_handle * devh, const void * command_v, int 
 //	printf("wch_link_command reply (%d)", *transferred); for(int i = 0; i< *transferred; printf(" %02x",reply[i++])); printf("\n"); 
 
 	if( status ) goto sendfail;
+	{
+		char cmdhex[LINKE_TRACE_BYTES * 3 + 16], replyhex[LINKE_TRACE_BYTES * 3 + 16];
+		LinkETraceAdd( "> %s< %s", LinkETraceHex( cmdhex, command, commandlen ), LinkETraceHex( replyhex, reply, *transferred ) );
+	}
 	return;
 sendfail:
+	{
+		char cmdhex[LINKE_TRACE_BYTES * 3 + 16];
+		LinkETraceAdd( "> %s! %s status=%d", LinkETraceHex( cmdhex, command, commandlen ), got_to_recv ? "recv" : "send", status );
+	}
 	fprintf( stderr, "Error sending WCH command (%s): ", got_to_recv?"on recv":"on send" );
 	int i;
+	// 続けて atexit で出す [trace] 行と同じ行にならないよう、stderr で行を閉じる
 	for( i = 0; i < commandlen; i++ )
 	{
-		printf( "%02x ", command[i] );
+		fprintf( stderr, "%02x ", command[i] );
 	}
-	printf( "\n" );
+	fprintf( stderr, "\n" );
 	exit( status );
 }
 
@@ -149,6 +196,15 @@ static inline libusb_device_handle * wch_link_base_setup( int inhibit_startup )
 			return 0;
 		}
 		found = wch_devices[g_wch_link_device_index];
+		{
+			uint8_t ports[8];
+			int nports = libusb_get_port_numbers( found, ports, sizeof( ports ) );
+			char path[40] = "";
+			int p;
+			for( p = 0; p < nports && p < 8; p++ )
+				sprintf( path + strlen( path ), p ? ".%d" : "%d", ports[p] );
+			LinkETraceAdd( "open: WCH-LinkE %d of %d, bus %d port %s", g_wch_link_device_index, wch_device_count, libusb_get_bus_number( found ), path );
+		}
 		if (wch_device_count > 1) {
 			fprintf(stderr, "Info: Using WCH-Link device %d of %d\n",
 					g_wch_link_device_index, wch_device_count);
